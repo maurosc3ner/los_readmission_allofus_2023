@@ -1,0 +1,680 @@
+---
+title: "Length of stay: Univariate"
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-06-02"
+---
+
+v1
+
+1. Dataset: aou_los_v1.RData
+2. EDA for los
+3. Univariate for los
+
+v2
+
+1. Dataset: aou_los_v2.RData
+
+v3
+
+1. Dataset: aou_los_v3.RData
+2. Additional comorbidities
+3. Migrated from splines to splines2 
+(Periodic B-splines and Rcpp Armadillo performance boost) https://cran.r-project.org/web/packages/splines2/vignettes/splines2-intro.html#b-spline-basis-functions
+
+v4
+
+1. Dataset: aou_los_v6.RData
+
+v5
+
+1. Dataset: aou_los_v7.RData
+
+v6 
+1. Site adjustment
+
+v7
+1. Dataset: aou_los_v8.RData (insurance)
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(ggstatsplot)
+library(cowplot)
+library(tidyverse)
+library(foreign)
+library(patchwork)
+library(tableone)
+library(MASS)
+library(lubridate)
+library(lme4)
+library(splines2)
+library(rstanarm)
+cbPalette <- c("#E64B35", "#4DBBD5")
+# load("data/aou_los_v8.RData")
+source("helpers.R")
+load("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+ 
+```{r}
+levels(data$concept_name_visit)
+
+data<-data %>%
+  mutate(prolongedStay=factor(if_else(los<2,"No","Yes"),
+                      levels =c("No","Yes") ))
+data$readmission10dNum<-as.numeric(data$readmission10d)-1
+data$readmission30dNum<-as.numeric(data$readmission30d)-1
+# summary(data)
+
+data$ehrsite=as.numeric(factor(data$src_id))
+data$s.age<-c(scale(data$ageatvisit,center = T))
+data$s.dep<-c(scale(data$dep_idx,center = T))
+
+```
+
+
+```{r}
+hist(data$dep_idx,32)
+hist(scale(data$dep_idx),32)
+hist(scale(data$dep_idx,center = T),32)
+hist(scale(data$dep_idx,center = T,scale = F),32)
+```
+
+
+# Individual 
+
+```{r}
+
+glmer.uni.nb.ri.age <- glmer.nb(
+  los ~
+    s.age:sex_at_birth +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+# summary(glmer.uni.nb.ri.race)
+gtsummary::tbl_regression(glmer.uni.nb.ri.age,exponentiate=T)
+
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+# Race
+
+```{r}
+glmer.uni.nb.ri.race <- glmer.nb(
+  los ~
+    race3 +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+# summary(glmer.uni.nb.ri.race)
+gtsummary::tbl_regression(glmer.uni.nb.ri.race,exponentiate=T)
+
+#cp2
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## hcType1
+
+```{r}
+glmer.uni.nb.ri.hctype1 <- glmer.nb(
+  los ~
+    hcType1+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype1,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+```{r}
+glmer.uni.nb.ri.hctype2 <- glmer.nb(
+  los ~
+    hcType2+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype2,exponentiate=T)
+
+#cp3
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+```{r}
+glmer.uni.nb.ri.hctype3<- glmer.nb(
+  los ~
+    hcType1+race3+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype3,exponentiate=T)
+```
+
+
+```{r}
+#discarded
+glmer.uni.nb.ri.hctype4<- glmer.nb(
+  los ~
+    hcType1:race3+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype4,exponentiate=T)
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+```{r}
+glmer.uni.nb.ri.hctype5<- glmer.nb(
+  los ~
+    hcType1*race3+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype5,exponentiate=T)
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## Season
+
+```{r}
+glmer.uni.nb.ri.season <- glmer.nb(
+  los ~
+    season +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+# summary(glmer.uni.nb.ri.race)
+gtsummary::tbl_regression(glmer.uni.nb.ri.season,exponentiate=T)
+#cp3
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+#Day of admission
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.doa <- glmer.nb(
+  los ~
+    weekend +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.doa,exponentiate=T)
+
+#cp4
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+# Deprivation non normalized
+
+```{r}
+glmer.uni.nb.ri.depidx<- glmer.nb(
+  los ~
+    dep_idx+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.depidx,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+# Deprivation normalized
+
+```{r}
+glmer.uni.nb.ri.sdep<- glmer.nb(
+  los ~
+    s.dep+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.sdep,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+
+# Comorbidities
+
+## Atopic dermatitis
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.ad <- glmer.nb(
+  los ~
+    AD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.ad,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+## Allergic rhinitis
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.ar <- glmer.nb(
+  los ~
+    AR.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.ar,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## Cancer
+
+```{r}
+glmer.uni.nb.ri.cancer <- glmer.nb(
+  los ~
+    Cancer.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.cancer,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## CHD
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.chd <- glmer.nb(
+  los ~
+    CHD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.chd,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+## CKD
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.ckd <- glmer.nb(
+  los ~
+    CKD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.ckd,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+### COPD
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.copd <- glmer.nb(
+  los ~
+    COPD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.copd,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## Depression
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.depre <- glmer.nb(
+  los ~
+    Depression.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.depre,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## Diabetes
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.diab <- glmer.nb(
+  los ~
+    Diab.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.diab,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## EoE
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.eoe <- glmer.nb(
+  los ~
+    EoE.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.eoe,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## FA
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.fa <- glmer.nb(
+  los ~
+    FA.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.fa,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## GERD
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.gerd <- glmer.nb(
+  los ~
+    GERD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.gerd,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## HTA
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.hta <- glmer.nb(
+  los ~
+    HTA.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.hta,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## Obesity
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.obs <- glmer.nb(
+  los ~
+    OBST.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.obs,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## Sleep apnea
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.apnea <- glmer.nb(
+  los ~
+    APNEA.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.apnea,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+## Psoriasis
+
+```{r}
+###### bayesian
+glmer.uni.nb.ri.psor <- glmer.nb(
+  los ~
+    PSOR.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+gtsummary::tbl_regression(glmer.uni.nb.ri.psor,exponentiate=T)
+
+#cp
+save.image("data/asthma.los.univariate.full.glmer.v7.RData")
+```
+
+
+
+```{r}
+
+```

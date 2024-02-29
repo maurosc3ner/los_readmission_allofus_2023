@@ -1,0 +1,301 @@
+---
+title: "Asthma Length of stay"
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-06-02"
+---
+
+v1
+
+1. Dataset: aou_los_v1.RData
+2. EDA for los
+3. Univariate for los
+
+v2
+
+1. Dataset: aou_los_v2.RData
+
+v3
+
+1. Dataset: aou_los_v3.RData
+2. Additional comorbidities
+3. Migrated from splines to splines2 
+(Periodic B-splines and Rcpp Armadillo performance boost) https://cran.r-project.org/web/packages/splines2/vignettes/splines2-intro.html#b-spline-basis-functions
+4. Several models tested: Zero inflated negative binomial, GAMMs
+
+v4
+Dataset: aou_los_v6.RData
+
+
+v5
+pico dataset using stratified sampling by race
+Code cleanup
+Only NB MCMC
+EHR site added
+
+v6
+use of asthma.los.multivariate.full.rstanarm.v6.RData
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+
+library(tidyverse)
+library(foreign)
+library(patchwork)
+library(MASS)
+library(lubridate)
+library(lme4)
+library(splines2)
+library(rstanarm)
+library(bayesplot)
+color_scheme_set("mix-teal-pink")
+bayesplot_theme_set(theme_minimal())
+cbPalette <- c("#E64B35", "#4DBBD5")
+
+load("data/asthma.los.multivariate.full.rstanarm.v6.RData")
+
+# source("helpers.R")
+```
+
+
+
+```{r}
+ppd <- posterior_predict(stan.nb.ri.full, draws=500)
+ppd %>%
+  ppc_intervals(y = stan.nb.ri.full$glmod$fr$los, yrep = ., fatten = 0, 
+              x = stan.nb.ri.full$glmod$fr$ehrsite, prob = .95) +
+  labs(x = "EHR site", y = "los",
+       title = "95% posterior predictive intervals vs real values")+
+  panel_bg(fill="gray90", color = NA) +
+ grid_lines(color = "white")
+
+```
+
+
+
+
+
+```{r}
+ppd %>%
+  ppc_intervals_grouped(y = stan.nb.ri.full$glmod$fr$los, yrep = .,
+                        group = stan.nb.ri.full$glmod$fr$race3, fatten = 0, 
+              x = stan.nb.ri.full$glmod$fr$dep_idx, prob = .95) +
+  labs(x = "Deprivation (%)", y = "los",
+       title = "95% posterior predictive intervals vs real values")+
+  panel_bg(fill="gray90", color = NA) +
+ grid_lines(color = "white")
+
+```
+
+
+```{r}
+disLabels<-c(
+    "exp(ageatvisit:sex_at_birthMale)" = "Age:Male",
+    "exp(ageatvisit:sex_at_birthFemale)" = "Age:Female",
+    "exp(s.age:sex_at_birthMale)" = "Age:Male",
+    "exp(s.age:sex_at_birthFemale)" = "Age:Female",
+    
+    "exp(race3Asian)" = "Asian",
+    "exp(race3Black_AA)" = "Black",
+    "exp(race3HL)" = "HL",
+    "exp(race3MENA)" = "MENA",
+    "exp(race3White_EA)" = "White",
+    "exp(race3Asian:dep_idx)" = "Deprivation:Asian",
+    "exp(race3Black_AA:dep_idx)" = "Deprivation:Black",
+    "exp(race3HL:dep_idx)" = "Deprivation:HL",
+    "exp(race3MENA:dep_idx)" = "Deprivation:MENA",
+    "exp(race3White_EA:dep_idx)" = "Deprivation:White",
+    "exp(dep_idx:race3Asian)" = "Deprivation:Asian",
+    "exp(dep_idx:race3Black_AA)" = "Deprivation:Black",
+    "exp(dep_idx:race3HL)" = "Deprivation:HL",
+    "exp(dep_idx:race3MENA)" = "Deprivation:MENA",
+    "exp(dep_idx:race3White_EA)" = "Deprivation:White",
+    "exp(dep_idx)" = "Deprivation",
+    "exp(s.dep)" = "Deprivation",
+    
+    "exp(hcType1Public)" = "Insurance:Public",
+    
+    "exp(seasonFall)" = "Fall",
+    "exp(seasonWinter)" = "Winter",
+    "exp(seasonSpring)" = "Spring",
+    "exp(weekendWeekend)"="Admission:Weekend",
+    "exp(AD.lonTRUE)" = "AD",
+    "exp(AR.lonTRUE)" = "AR",
+    "exp(EoE.lonTRUE)" = "EoE",
+    "exp(FA.lonTRUE)"="FA",
+    "exp(GERD.lonTRUE)" = "GERD",
+    "exp(OBST.lonTRUE)" = "Obesity",
+    "exp(PSOR.lonTRUE)" = "Psoriasis",
+    "exp(APNEA.lonTRUE)"="Apnea",
+    
+    "exp(Cancer.lonTRUE)" = "Cancer",
+    "exp(CHD.lonTRUE)"="CHD",
+    "exp(CKD.lonTRUE)" = "CKD",
+    "exp(COPD.lonTRUE)" = "COPD",
+    "exp(Depression.lonTRUE)" = "Depression",
+    "exp(Diab.lonTRUE)"="Diabetes",
+    "exp(HTA.lonTRUE)"="HTA"
+    )
+```
+
+
+
+# full d no interaction
+
+```{r}
+pDemo<-mcmc_intervals(stan.nb.ri.full.d,regex_pars = "age|race|hc|season|week|dep",  prob = 0.95,transformations = "exp") +
+ labs(
+   title = "Posterior distributions with medians and 95% intervals",
+   subtitle = "Demographics, temporal & place-based",x="Expected LOS"
+ )+geom_vline(xintercept =1,lty="dashed",alpha=0.5)+
+  scale_y_discrete(
+    limits=rev(c(
+    "exp(s.age:sex_at_birthMale)",
+    "exp(s.age:sex_at_birthFemale)",
+    "exp(race3Asian)",
+    "exp(race3Black_AA)",
+    "exp(race3HL)",
+    "exp(race3MENA)",
+    "exp(hcType1Public)",
+    "exp(weekendWeekend)"
+    ))
+    ,
+    
+    labels=disLabels
+    )
+
+pDemo+
+   coord_cartesian(xlim=c(0.6, 1.3))
+```
+
+
+```{r}
+pDise1<-mcmc_intervals(stan.nb.ri.full.d,regex_pars = "AD|AR|EoE|FA|GERD|OBS|PSOR|APNE",  prob = 0.95,transformations = "exp") +
+ labs(
+   # title = "Posterior distributions with medians and 95% intervals",
+   subtitle = "Previous comorbidities (Non-chronic diseases)",x="Expected LOS"
+ )+geom_vline(xintercept =1,lty="dashed",alpha=0.5)+
+  scale_y_discrete(
+    limits=rev(c(
+    # "exp(AD.lonTRUE)",
+    "exp(AR.lonTRUE)",
+    # "exp(EoE.lonTRUE)",
+    # "exp(FA.lonTRUE)",
+    "exp(GERD.lonTRUE)",
+    "exp(OBST.lonTRUE)",
+    # "exp(PSOR.lonTRUE)",
+    "exp(APNEA.lonTRUE)"
+    ))
+    ,
+    
+    labels=disLabels
+    )
+# +
+#   xlim(0.0,2.5)
+
+pDise1
+```
+
+
+```{r}
+pDise2<-mcmc_intervals(stan.nb.ri.full.d,regex_pars = "Cance|CHD|CKD|COPD|Depr|Diab|HTA",  prob = 0.95,transformations = "exp") +
+ labs(
+   # title = "Posterior distributions with medians and 95% intervals",
+   subtitle = "Previous comorbidities (chronic diseases)",x="Expected LOS"
+ )+geom_vline(xintercept =1,lty="dashed",alpha=0.5)+
+  scale_y_discrete(
+    limits=rev(c(
+    "exp(Cancer.lonTRUE)",
+    "exp(CHD.lonTRUE)",
+    "exp(CKD.lonTRUE)",
+    "exp(COPD.lonTRUE)",
+    "exp(Depression.lonTRUE)",
+    "exp(Diab.lonTRUE)",
+    "exp(HTA.lonTRUE)"
+    ))
+    ,
+    
+    labels=disLabels
+    )
+
+
+pDise2
+```
+
+
+```{r}
+ppd <- posterior_predict(stan.nb.ri.ehrsite, draws=1000)
+ppd %>%
+  ppc_intervals(y = stan.nb.ri.ehrsite$data$los, yrep = ., fatten = 0, 
+              x = stan.nb.ri.ehrsite$data$ehrsite, prob = 0.95) +
+  labs(x = "EHR site", y = "los",
+       title = "50% posterior predictive intervals vs real values")+
+  panel_bg(fill="gray90", color = NA) +
+ grid_lines(color = "white")
+
+```
+
+
+```{r}
+ppd <- posterior_predict(stan.nb.ri.full, draws=500)
+ppd %>%
+  ppc_stat_grouped(y = stan.nb.ri.full$glmod$fr$los, yrep = .,
+                   group = stan.nb.ri.full$glmod$fr$race3,
+                   stat = "median", binwidth=0.005)
+```
+
+
+
+
+# Handling overdispersion
+
+```{r}
+prop_zero <- function(y) mean(y == 0)
+prop_zero_test1 <- pp_check(stan.ps.ri.null, plotfun = "stat", stat = "prop_zero", binwidth = .001)
+prop_zero_test2 <- pp_check(stan.nb.ri.null, plotfun = "stat", stat = "prop_zero",binwidth = .001)
+prop_zero_test3 <- pp_check(stan.nb.ri.full.d, plotfun = "stat", stat = "prop_zero",binwidth = 0.001)
+
+
+(prop_zero_test1 + ggtitle("Poisson")+coord_cartesian(xlim=c(0.33, 0.48)))+
+  (prop_zero_test3 + ggtitle("NB")+coord_cartesian(xlim=c(0.33, 0.48)))+
+  patchwork::plot_layout(guides = "collect")
+```
+
+
+
+
+
+
+
+
+```{r}
+yrep_poisson <- posterior_predict(stan.ps.ri.null, draws = 200)
+yrep_nb <- posterior_predict(stan.nb.ri.full, draws = 200)
+dim(yrep_poisson)
+```
+
+
+```{r}
+y <- example_y_data()
+yrep <- example_yrep_draws()
+ppc_error_hist(y, yrep[1:3, ])
+```
+
+
+
+
+```{r}
+
+# Data is the initial data frame
+# Model is the final data frame used in Stan, 
+# color_scheme_set("brightblue")
+a<-ppc_dens_overlay(stan.ps.ri.null$glmod$fr$los, yrep_poisson)+xlim(0,15)+ggtitle("Stan Poisson")
+b<-ppc_dens_overlay(stan.nb.ri.full$glmod$fr$los, yrep_nb)+xlim(0,15)+ggtitle("Stan Negative Binomial")
+
+a+b
+# pp_check(stan_glm2, type = "overlaid", ndraws = 100)+xlim(0,15)
+```
+

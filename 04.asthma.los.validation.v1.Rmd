@@ -1,0 +1,107 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-10-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+
+cbPalette <- c("#E64B35", "#4DBBD5")
+# load("data/aou_los_v8.RData")
+
+load("data/asthma.los.multivariate.full.rstanarm.v6.RData")
+
+source("helpers.R")
+```
+
+
+### LOGO ELPD
+
+```{r}
+# Evaluate leave-one-out 
+# @param llk piecewise log likelihood matrix
+# @param ids Vector of multiple ed visits related to patients 
+llkByPatient<-function(llk,ids){
+  print(dim(llk))
+  collapsed<-apply(llk,1L,function(row) tapply(row, ids, sum))
+  print(dim(collapsed))
+  # return transposed matrix
+  return(t(collapsed))
+}
+```
+
+
+```{r}
+post <- as.array(stan.nb.ri.null)
+dim(post)
+#0. Get ids, chains and iterations
+ids <- stan.nb.ri.null$glmod$fr$id
+chain_id = rep(1:dim(post)[2], 
+               each = dim(post)[1])
+#### model nb null
+#1. Get log likehood per infection event
+myllk.nb.f.null <- log_lik(stan.nb.ri.null, 
+                           merge_chains = F)
+#2. Join llk by patient
+myllk2.nb.f.null <- llkByPatient(llk = myllk.nb.f.null,
+                                 ids = ids)
+reff.nb.f.null <- relative_eff(myllk2.nb.f.null,
+                               chain_id = chain_id,
+                               cores = 10)
+```
+
+
+
+```{r}
+post <- as.array(stan.nb.ri.full.d)
+#0. Get ids, chains and iterations
+ids.full<-stan.nb.ri.full.d$glmod$fr$id
+chain_id=rep(1:dim(post)[2], each = dim(post)[1])
+
+#### model nb.full.d
+#1. Get log likehood per infection event
+myllk.nb.full.d<-log_lik(stan.nb.ri.full.d,
+                         merge_chains = F)
+myllk2.nb.full.d<-llkByPatient(llk = myllk.nb.full.d,
+                                ids = ids.full)
+
+reff.nb.f.full <- relative_eff(myllk2.nb.full.d,
+                               chain_id = chain_id,
+                               cores = 10)
+#loo
+loo.nb.null <- loo(myllk2.nb.f.null, r_eff = reff.nb.f.null)  
+loo.nb.full <- loo(myllk2.nb.full.d, r_eff = reff.nb.f.full)  
+
+#leave-one-out ELPD
+print(loo_compare(loo.nb.null,loo.nb.full),simplify=F,digits=2) %>% 
+  kableExtra::kbl(digits=2) %>% 
+  kableExtra::kable_paper("hover",full_width=F) 
+
+```
+
+
+
+```{r}
+plot(loo(myllk2_read.full.e,r_eff = reff_read.full.e),main="")
+# title(side=3, line=3, at=1.0, adj=0, cex=0.7, mytitle)
+# title('B', cex.main=1, family="serif", adj=0.0, line=0)
+save.image("data/asthma.los.val.stan.v1.RData")
+
+```
+
+
+```{r}
+#Are chains mixing well?
+color_scheme_set("mix-teal-pink")
+mcmc_trace(stan.nb.ri.full.d, 
+           pars=c("(Intercept)"),
+           facet_args = list(ncol = 1, strip.position = "left")
+           )+panel_bg(fill = "white", color = NA) +legend_move("top")+labs(x="Draws")
+```

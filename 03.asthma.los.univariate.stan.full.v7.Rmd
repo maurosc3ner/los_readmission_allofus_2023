@@ -1,0 +1,808 @@
+---
+title: "Length of stay: Univariate"
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-06-02"
+---
+
+v1
+
+1. Dataset: aou_los_v1.RData
+2. EDA for los
+3. Univariate for los
+
+v2
+
+1. Dataset: aou_los_v2.RData
+
+v3
+
+1. Dataset: aou_los_v3.RData
+2. Additional comorbidities
+3. Migrated from splines to splines2 
+(Periodic B-splines and Rcpp Armadillo performance boost) https://cran.r-project.org/web/packages/splines2/vignettes/splines2-intro.html#b-spline-basis-functions
+
+v4
+
+1. Dataset: aou_los_v6.RData
+
+v5
+
+1. Dataset: aou_los_v7.RData
+
+v6 
+1. Site adjustment
+
+v7
+1. Dataset: aou_los_v8.RData (insurance)
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(ggstatsplot)
+library(cowplot)
+library(tidyverse)
+library(foreign)
+library(patchwork)
+library(tableone)
+library(MASS)
+library(lubridate)
+library(lme4)
+library(splines2)
+library(rstanarm)
+cbPalette <- c("#E64B35", "#4DBBD5")
+load("data/aou_los_v8.RData")
+source("helpers.R")
+ # load("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+ 
+```{r}
+levels(data$concept_name_visit)
+
+data<-data %>%
+  mutate(prolongedStay=factor(if_else(los<2,"No","Yes"),
+                      levels =c("No","Yes") ))
+data$readmission10dNum<-as.numeric(data$readmission10d)-1
+data$readmission30dNum<-as.numeric(data$readmission30d)-1
+summary(data)
+
+data$ehrsite=as.numeric(factor(data$src_id))
+data$s.age<-c(scale(data$ageatvisit,center = T))
+data$s.dep<-c(scale(data$dep_idx,center = T))
+
+```
+
+
+```{r}
+hist(data$dep_idx,32)
+hist(scale(data$dep_idx),32)
+hist(scale(data$dep_idx,center = T),32)
+hist(scale(data$dep_idx,center = T,scale = F),32)
+```
+
+
+# Individual 
+
+```{r}
+
+stan.uni.nb.ri.age <- stan_glmer(
+  los ~
+    s.age:sex_at_birth +
+    # race3 +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1500,QR=TRUE,
+  seed = 12345
+)
+# summary(stan.uni.nb.ri.race)
+coefs<-mcmc_post_ci(stan.uni.nb.ri.age,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+
+
+
+# Race
+
+```{r}
+stan.uni.nb.ri.race <- stan_glmer(
+  los ~
+    race3 +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 1),
+  prior_intercept = normal(0, 1),
+  chains=8,
+  cores=8,refresh=5,
+  iter=500,QR=TRUE,
+  seed = 12345
+)
+# summary(stan.uni.nb.ri.race)
+coefs<-mcmc_post_ci(stan.uni.nb.ri.race,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp2
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## hcType1
+
+```{r}
+glmer.uni.nb.ri.hctype1 <- glmer.nb(
+  los ~
+    hcType1+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype1,exponentiate=T)
+
+
+##### Bayesian
+stan.uni.nb.ri.hctype1 <- stan_glmer(
+  los ~
+    hcType1 +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+# summary(stan.uni.nb.ri.race)
+coefs<-mcmc_post_ci(stan.uni.nb.ri.hctype1,0.95,34)$df
+coefs %>% dplyr::select(HR)
+#cp3
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+```{r}
+glmer.uni.nb.ri.hctype2 <- glmer.nb(
+  los ~
+    hcType2+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype2,exponentiate=T)
+
+##### Bayesian
+stan.uni.nb.ri.hctype2 <- stan_glmer(
+  los ~
+    hcType2 +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+# summary(stan.uni.nb.ri.race)
+coefs<-mcmc_post_ci(stan.uni.nb.ri.hctype2,0.95,34)$df
+coefs %>% dplyr::select(HR)
+#cp3
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+```{r}
+glmer.uni.nb.ri.hctype3<- glmer.nb(
+  los ~
+    hcType1+race3+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype3,exponentiate=T)
+```
+
+```{r}
+glmer.uni.nb.ri.hctype4<- glmer.nb(
+  los ~
+    hcType1:race3+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype4,exponentiate=T)
+```
+
+
+```{r}
+glmer.uni.nb.ri.hctype5<- glmer.nb(
+  los ~
+    hcType1*race3+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype5,exponentiate=T)
+```
+
+```{r}
+glmer.uni.nb.ri.hctype6<- glmer.nb(
+  los ~
+    hcType1*race3+s.dep+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.hctype6,exponentiate=T)
+```
+
+
+## Season
+
+```{r}
+
+##### Bayesian
+stan.uni.nb.ri.season <- stan_glmer(
+  los ~
+    season +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+# summary(stan.uni.nb.ri.race)
+coefs<-mcmc_post_ci(stan.uni.nb.ri.season,0.95,34)$df
+coefs %>% dplyr::select(HR)
+#cp3
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+#Day of admission
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.doa <- stan_glmer(
+  los ~
+    weekend +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.doa,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp4
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+# Deprivation non normalized
+
+```{r}
+glmer.uni.nb.ri.depidx<- glmer.nb(
+  los ~
+    dep_idx+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.depidx,exponentiate=T)
+
+###### bayesian
+stan.uni.nb.ri.depidx <- stan_glmer(
+  los ~
+    dep_idx +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 1),
+  prior_intercept = normal(0, 1),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1000,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.depidx,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+# Deprivation normalized
+
+```{r}
+glmer.uni.nb.ri.sdep<- glmer.nb(
+  los ~
+    s.dep+
+    (1 | id)+(1|ehrsite),
+  data = data,
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+gtsummary::tbl_regression(glmer.uni.nb.ri.sdep,exponentiate=T)
+
+###### bayesian
+stan.uni.nb.ri.sdep <- stan_glmer(
+  los ~
+    s.dep +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 1),
+  prior_intercept = normal(0, 1),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.sdep,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+
+# Comorbidities
+
+## Atopic dermatitis
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.ad <- stan_glmer(
+  los ~
+    AD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 1),
+  prior_intercept = normal(0, 1),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.ad,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+## Allergic rhinitis
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.ar <- stan_glmer(
+  los ~
+    AR.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.ar,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## Cancer
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.cancer <- stan_glmer(
+  los ~
+    Cancer.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.cancer,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## CHD
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.chd <- stan_glmer(
+  los ~
+    CHD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.chd,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+## CKD
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.ckd <- stan_glmer(
+  los ~
+    CKD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.ckd,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+### COPD
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.copd <- stan_glmer(
+  los ~
+    COPD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.copd,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## Depression
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.depre <- stan_glmer(
+  los ~
+    Depression.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.depre,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## Diabetes
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.diab <- stan_glmer(
+  los ~
+    Diab.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.diab,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## EoE
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.eoe <- stan_glmer(
+  los ~
+    EoE.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 1),
+  prior_intercept = normal(0, 1),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.eoe,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## FA
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.fa <- stan_glmer(
+  los ~
+    FA.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+coefs<-mcmc_post_ci(stan.uni.nb.ri.fa,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## GERD
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.gerd <- stan_glmer(
+  los ~
+    GERD.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.gerd,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## HTA
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.hta <- stan_glmer(
+  los ~
+    HTA.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.hta,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## Obesity
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.obs <- stan_glmer(
+  los ~
+    OBST.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.obs,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## Sleep apnea
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.apnea <- stan_glmer(
+  los ~
+    APNEA.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.apnea,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+## Psoriasis
+
+```{r}
+###### bayesian
+stan.uni.nb.ri.psor <- stan_glmer(
+  los ~
+    PSOR.lon +
+    (1 | id)+(1 | ehrsite),
+  data = data,
+  family = neg_binomial_2,
+  prior = normal(0, 2.5),
+  prior_intercept = normal(0, 5),
+  chains=4,
+  cores=8,refresh=50,
+  iter=1200,QR=F,
+  seed = 12345
+)
+
+coefs<-mcmc_post_ci(stan.uni.nb.ri.psor,0.95,34)$df
+coefs %>% dplyr::select(HR)
+
+#cp
+save.image("data/asthma.los.univariate.full.rstanarm.v7.RData")
+```
+
+
+
+```{r}
+
+```
